@@ -157,15 +157,9 @@ def check_sql_injection(place, parameter, value):
 	print "check %s=%s parameter" % (parameter, value)
 	tests = get_injection_tests()
 	injectable = False
-	injection = None
 	while tests:
 		test = tests.pop(0)
 		title = test.title
-		injection = InjectionDict()
-		injection.parameter = parameter
-		injection.value = value
-		injection.place = place
-		injection.stype = test.stype
 
 		comment = None
 		if "comment" in test.request:
@@ -202,8 +196,7 @@ def check_sql_injection(place, parameter, value):
 			# 组装payload
 			prefix = boundary.prefix if boundary.prefix else ""
 			suffix = boundary.suffix if boundary.suffix else ""
-			injection.prefix = prefix
-			injection.suffix = suffix
+
 
 			# 考虑where的位置，放置参数和payload的位置
 			for where in test.where:
@@ -238,8 +231,6 @@ def check_sql_injection(place, parameter, value):
 								url_with_payload = get_url_with_payload(req_payload,
 																		kb.targets.method, place)
 								conf.hint_payloads["error"].append((url_with_payload, ))
-								injectable = True
-								injection.data[1] += 1
 								return injectable
 
 					# 盲注检测
@@ -282,78 +273,7 @@ def check_sql_injection(place, parameter, value):
 																   kb.targets.method, place)
 								record_second = get_url_with_payload(snd_payload,
 																   kb.targets.method, place)
-								is_false_position = check_false_positive(injection)
-								if is_false_position:
-									print "Detect parameter %s=%s is false positive" % (parameter, value)
-									injectable = False
-									return injectable
 								conf.hint_payloads["bool"].append((record_one, record_second))
-								injection.data[2] += 1
-
-								# 如果盲注规则命中了两条则直接返回
-								# 命中规则选取第一条
-								if injection.data[2] > 1:
-									conf.hint_payloads = conf.hint_payloads["bool"][0]
-									return injectable
-
-	# 	# 如果最终只有一条盲注命中，则开始进行误报检测
-	# 	if injection.data[2] == 1:
-	# 		is_false_position = check_false_position(injection)
-	# 		if is_false_position:
-	# 			injectable = False
-	# return injectable
+								return injectable
 
 
-def check_false_positive(injection):
-	"""
-	检测盲注中的
-	:param injection:
-	:return:
-	"""
-	flag = False
-	rand_int1, rand_int2, rand_int3 = 0, 0, 0
-
-	def _():
-		return int(random_int(2)) + 1
-
-	while True:
-		rand_int1, rand_int2, rand_int3 = (_() for j in xrange(3))
-
-		rand_int1 = min(rand_int1, rand_int2, rand_int3)
-		rand_int3 = max(rand_int1, rand_int2, rand_int3)
-
-		if rand_int3 > rand_int2 > rand_int1:
-			break
-	if not check_bool_expression("and %d=%d" % (rand_int1, rand_int1), injection):
-		flag = True
-	if check_bool_expression("and %d=%d" % (rand_int1, rand_int3), injection):
-		flag = True
-	elif check_bool_expression("and %d=%d" % (rand_int3, rand_int2), injection):
-		flag = True
-	elif not check_bool_expression("and %d=%d" % (rand_int2, rand_int2), injection):
-		flag = True
-	return flag
-
-
-def check_bool_expression(expression, injection):
-	"""
-	检测布尔条件是否成立
-	:param expression:
-	:param injection:
-	:return:
-	"""
-	original_page = kb.original_page
-	prefix = injection.prefix
-	suffix = injection.suffix
-	parameter = injection.parameter
-	value = injection.value
-	place = injection.place
-
-	payload = prefix_packing(expression, prefix)
-	payload = suffix_packing(payload, suffix)
-	payload = payload_packing(place, parameter, value=value, newValue=payload)
-	page, headers = Request.query_page(payload, place)
-	if page is None:
-		return True
-	ret = compare_pages(original_page, page)
-	return ret

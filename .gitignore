@@ -14,6 +14,7 @@ develop-eggs/
 dist/
 downloads/
 eggs/
+test/
 .eggs/
 lib/core/settings.py
 lib64/

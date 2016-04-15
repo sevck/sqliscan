@@ -1,0 +1,2 @@
+# sqliscan
+A sqli scanner

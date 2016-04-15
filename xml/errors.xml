@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<root>
+    <!-- MySQL -->
+    <dbms value="MySQL">
+        <error regexp="SQL syntax.*MySQL"/>
+        <error regexp="Warning.*mysql_.*"/>
+        <error regexp="MySqlException \(0x"/>
+        <error regexp="valid MySQL result"/>
+        <error regexp="MySqlClient\."/>
+        <error regexp="com\.mysql\.jdbc\.exceptions"/>
+    </dbms>
+
+</root>

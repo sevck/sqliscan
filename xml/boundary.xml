@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<root>
+    <boundary>
+        <clause>1,2,3</clause>
+        <where>1,2</where>
+        <ptype>2</ptype>
+        <prefix>'</prefix>
+        <suffix></suffix>
+    </boundary>
+
+    <boundary>
+        <clause>1</clause>
+        <where>1,2</where>
+        <ptype>1</ptype>
+        <prefix>)</prefix>
+        <suffix> AND ([RANDNUM]=[RANDNUM]</suffix>
+    </boundary>
+
+    <boundary>
+        <clause>0</clause>
+        <where>1,2,3</where>
+        <ptype>1</ptype>
+        <prefix></prefix>
+        <suffix></suffix>
+    </boundary>
+
+    <boundary>
+        <clause>1</clause>
+        <where>1,2</where>
+        <ptype>2</ptype>
+        <prefix>')</prefix>
+        <suffix> AND ('[RANDSTR]'='[RANDSTR]</suffix>
+    </boundary>
+
+    <boundary>
+        <clause>1</clause>
+        <where>1,2</where>
+        <ptype>2</ptype>
+        <prefix>'</prefix>
+        <suffix> AND '[RANDSTR]'='[RANDSTR]</suffix>
+    </boundary>
+
+    <boundary>
+        <clause>1</clause>
+        <where>1,2</where>
+        <ptype>3</ptype>
+        <prefix>'</prefix>
+        <suffix> AND '[RANDSTR]' LIKE '[RANDSTR]</suffix>
+    </boundary>
+
+    <boundary>
+        <clause>1</clause>
+        <where>1,2</where>
+        <ptype>2</ptype>
+        <prefix>%'</prefix>
+        <suffix> AND '%'='</suffix>
+    </boundary>
+
+    <boundary>
+        <clause>1</clause>
+        <where>1,2</where>
+        <ptype>1</ptype>
+        <prefix></prefix>
+        <suffix>-- [RANDSTR]</suffix>
+    </boundary>
+
+    <boundary>
+        <clause>1</clause>
+        <where>1,2</where>
+        <ptype>1</ptype>
+        <prefix></prefix>
+        <suffix>%23 [RANDSTR]</suffix>
+    </boundary>
+
+    <boundary>
+        <clause>1</clause>
+        <where>1,2</where>
+        <ptype>2</ptype>
+        <prefix>%df%27</prefix>
+        <suffix>%23</suffix>
+    </boundary>
+
+
+</root>

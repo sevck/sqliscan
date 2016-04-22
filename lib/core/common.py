@@ -5,9 +5,11 @@
 import os
 import sys
 import copy
+import codecs
 import re
 import random
 import string
+import urllib
 import urlparse
 import difflib
 
@@ -18,6 +20,10 @@ from lib.core.settings import REFLECTED_REPLACEMENT_REGEX
 from lib.core.settings import REFLECTED_BORDER_REGEX
 from lib.core.settings import REFLECTED_MAX_REGEX_PARTS
 from lib.core.settings import REFLECTED_VALUE_MARKER
+from lib.core.settings import PAYLOAD_DELIMITER
+from lib.core.settings import INVALID_UNICODE_CHAR_FORMAT
+from lib.core.settings import UNICODE_ENCODING
+from lib.core.settings import CONTENT_TYPE_WHITE_LIST
 from lib.core.data import kb
 from lib.core.data import conf
 from lib.core.exception import SqliSystemException
@@ -80,7 +86,8 @@ def findDynamicContent(firstPage, secondPage):
 	DYNAMICITY_MARK_LENGTH = 32
 	if not firstPage or not secondPage:
 		return
-	blocks = difflib.SequenceMatcher(None, firstPage, secondPage).get_matching_blocks()
+	seq_matcher = difflib.SequenceMatcher(None, firstPage, secondPage)
+	blocks = seq_matcher.get_matching_blocks()
 	dynamicMarkings = []
 
 	# Removing too small matching blocks
@@ -131,20 +138,23 @@ def removeDynamicContent(page, dynamicMarkings):
 	return page
 
 
-def get_params_tuples(query_str):
+def get_params_tuples(query_str, sep="&"):
 	"""
-	>>>get_params_tuples("name=1&id=2")
+	>>>get_params_tuples("name=1&id=2", seq="&")
 	>>>[('name', '1'), ('id', '2')]
+	>>>get_params_dict("name=1; id=2", sep=";")
+	>>>[('id', '2'), ('name', '1')]
 	:param query_str:
 	:return:
 	"""
 	ret = []
-	items = query_str.split("&")
+	items = query_str.split(sep)
 	for item in items:
-		if not item:
+		if item is None:
 			continue
 		elif item.find('=') == -1:
 			continue
+		item = item.strip()
 		pos = item.index('=')
 		k = item[:pos]
 		v = item[pos+1:]
@@ -152,7 +162,7 @@ def get_params_tuples(query_str):
 	return ret
 
 
-def get_params_dict(query_str):
+def get_params_dict(query_str, sep="&"):
 	"""
 	>>>get_params_dict("name=1&id=3")
 	>>>{'name': '1', 'id': '3'}
@@ -160,7 +170,7 @@ def get_params_dict(query_str):
 	:return:
 	"""
 	ret_dict = {}
-	ts = get_params_tuples(query_str)
+	ts = get_params_tuples(query_str, sep=sep)
 	for item in ts:
 		ret_dict[item[0]] = item[1]
 	return ret_dict
@@ -181,6 +191,44 @@ def get_urlparse(url):
 	parser = urlparse.urlparse(url)
 	return parser
 
+
+def get_unicode(value, encoding=None, noneToNull=False):
+	"""
+	Return the unicode representation of the supplied value:
+
+	>>> getUnicode(u'test')
+	u'test'
+	>>> getUnicode('test')
+	u'test'
+	>>> getUnicode(1)
+	u'1'
+	"""
+	def is_list_like(value):
+		return isinstance(value, (list, tuple, set))
+
+	if noneToNull and value is None:
+		return None
+
+	if is_list_like(value):
+		value = list(get_unicode(_, encoding, noneToNull) for _ in value)
+		return value
+
+	if isinstance(value, unicode):
+		return value
+	elif isinstance(value, basestring):
+		while True:
+			try:
+				return unicode(value, encoding or (kb.get("page_encoding") if kb.get("original_page") else None) or UNICODE_ENCODING)
+			except UnicodeDecodeError, ex:
+				try:
+					return unicode(value, UNICODE_ENCODING)
+				except:
+					value = value[:ex.start] + "".join(INVALID_UNICODE_CHAR_FORMAT % ord(_) for _ in value[ex.start:ex.end]) + value[ex.end:]
+	else:
+		try:
+			return unicode(value)
+		except UnicodeDecodeError:
+			return unicode(str(value), errors="ignore")
 
 def random_int(length=4, seed=None):
 	"""
@@ -295,7 +343,22 @@ def suffix_packing(expr, suffix, comment=None):
 	return expr
 
 
-def payload_packing(place, parameter, value="", newValue=None, where=None):
+def add_payload_delimiters(value):
+	"""
+	Adds payload delimiters around the input string
+	"""
+
+	return "%s%s%s" % (PAYLOAD_DELIMITER, value, PAYLOAD_DELIMITER) if value else value
+
+
+def remove_payload_delimiters(value):
+	"""
+	Removes payload delimiters from inside the input string
+	"""
+
+	return value.replace(PAYLOAD_DELIMITER, '') if value else value
+
+def payload_packing(place, parameter, value="", newValue=None, where=None, delimiters=True):
 	"""
 	组装payload
 	:param place: params ua headers url_rewrite
@@ -306,14 +369,17 @@ def payload_packing(place, parameter, value="", newValue=None, where=None):
 	:return:
 	"""
 	ret_payload = ""
-
+	newValue = get_unicode(newValue)
 	# 参数位置的注入检测
 	if place == "params":
-		for k, v in conf.params_dict.items():
+		for k, v in conf.parameters[place]:
 			if k == parameter:
 				# 考虑payload和参数的结合方式（where值）
 				if where == 1 or where == 2 or not where:
-					ret_payload += "%s=%s%s" % (k, v, newValue)
+					# 加入payload的前缀和后缀
+					if delimiters:
+						newValue = add_payload_delimiters("%s%s" % (v, newValue))
+					ret_payload += "%s=%s" % (k, newValue)
 				elif where == 3:
 					ret_payload += "%s=%s" % (k, newValue)
 			else:
@@ -322,12 +388,41 @@ def payload_packing(place, parameter, value="", newValue=None, where=None):
 		return ret_payload[:-1]
 
 	elif place == "ua":
-		ret_payload = "%s%s%s" % ("User-Agent:", value, newValue)
+		ret_payload = "%s%s" % (value, newValue)
 		return ret_payload
+	elif place == "headers":
+		ret_payload = ""
+		for k, v in conf.parameters[place]:
+			if k == parameter:
+				# 考虑payload和参数的结合方式（where值）
+				if where == 1 or where == 2 or not where:
+					# 加入payload的前缀和后缀
+					if delimiters:
+						newValue = add_payload_delimiters("%s%s" % (v, newValue))
+					ret_payload += "%s=%s" % (k, newValue)
+				elif where == 3:
+					ret_payload += "%s=%s" % (k, newValue)
+			else:
+				ret_payload += "%s=%s" % (k, v)
+			ret_payload += "|"
+		return ret_payload[:-1]
 	elif place == "url_rewrite":
 		pass
-	elif place == "cookie":
-		pass
+	elif place == "cookies":
+		for k, v in conf.parameters[place]:
+			if k == parameter:
+				# 考虑payload和参数的结合方式（where值）
+				if where == 1 or where == 2 or not where:
+					# 加入payload的前缀和后缀
+					if delimiters:
+						newValue = add_payload_delimiters("%s%s" % (v, newValue))
+					ret_payload += "%s=%s" % (k, newValue)
+				elif where == 3:
+					ret_payload += "%s=%s" % (k, newValue)
+			else:
+				ret_payload += "%s=%s" % (k, v)
+			ret_payload += ";"
+		return ret_payload[:-1]
 	else:
 		pass
 
@@ -411,6 +506,12 @@ def getFilteredPageContent(page, onlyText=True):
 
 
 def compare_pages(first_page, secd_page):
+	"""
+	盲注检测中的页面对比方案
+	:param first_page:
+	:param secd_page:
+	:return:
+	"""
 	if not kb.page_stable:
 		first_page = removeDynamicContent(first_page, kb.dynamic_marks)
 		secd_page = removeDynamicContent(secd_page, kb.dynamic_marks)
@@ -462,9 +563,9 @@ def compare_pages(first_page, secd_page):
 		if 0.98 > ratio > 0.02:
 			kb.match_ratio = ratio
 
-	if ratio > 0.98:
+	if ratio >= 0.98:
 		return True
-	elif ratio < 0.02:
+	elif ratio <= 0.02:
 		return False
 	else:
 		return (ratio - kb.match_ratio) > 0.05
@@ -477,21 +578,20 @@ def get_url_with_payload(payload, method, place):
 	:return:
 	"""
 	ret_value = ""
+	payload = remove_payload_delimiters(payload)
 	if place == "params":
 		if method == "GET":
 			ret_value = "GET|%s?%s" % (kb.targets.target, payload)
 		elif method == "POST":
 			ret_value = "POST|%s|%s" % (kb.targets.target, payload)
 	elif place == "ua":
-		pass
-	elif place == "headers":
-		pass
-	elif place == "cookie":
-		pass
+		ret_value = "UA|User-Agent: %s" % payload
+	elif place == "cookies":
+		ret_value = "COOKIES|Cookie: %s" % payload
 	elif place == "url_rewrite":
 		pass
-	else:
-		pass
+	elif place == "headers":
+		ret_value = "HEADERS|%s" % payload
 	return ret_value
 
 
@@ -509,9 +609,14 @@ def filterStringValue(value, charRegex, replacement=""):
 	return retVal
 
 
-class REFLECTIVE_COUNTER:
-	MISS = "MISS"
-	HIT = "HIT"
+def urlencode(value):
+	return urllib.quote(value)
+
+
+def urldecode(value):
+	if not value:
+		return None
+	return urllib.unquote(value)
 
 
 def removeReflectiveValues(content, payload, suppressWarning=False):
@@ -521,7 +626,7 @@ def removeReflectiveValues(content, payload, suppressWarning=False):
 	"""
 
 	retVal = content
-
+	payload = urldecode(payload)
 	try:
 		if all([content, payload]):
 			def _(value):
@@ -566,7 +671,143 @@ def removeReflectiveValues(content, payload, suppressWarning=False):
 	return retVal
 
 
+def extract_payload(value):
+	"""
+	从payload定位符之间获取payload
+	"""
+	_ = re.escape(PAYLOAD_DELIMITER)
+	return extract_regex_result("(?s)%s(?P<result>.*?)%s" % (_, _), value)
+
+
+def page_encoding(content, encoding="utf-8"):
+	"""
+	将页面进行unicode编码
+	:param content:
+	:param encoding:
+	:return:
+	"""
+	content = get_unicode(content, encoding=encoding)
+	content = content.encode(encoding).decode("unicode_escape")
+	return content
+
+
+def check_char_encoding(encoding, warn=True):
+	"""
+	识别编码的名称
+	>>> checkCharEncoding('iso-8858', False)
+	'iso8859-1'
+	>>> checkCharEncoding('en_us', False)
+	'utf8'
+	"""
+
+	if encoding:
+		encoding = encoding.lower()
+	else:
+		return encoding
+
+	translate = {"windows-874": "iso-8859-11", "utf-8859-1": "utf8", "en_us": "utf8", "macintosh": "iso-8859-1", "euc_tw": "big5_tw", "th": "tis-620", "unicode": "utf8",  "utc8": "utf8", "ebcdic": "ebcdic-cp-be", "iso-8859": "iso8859-1", "ansi": "ascii", "gbk2312": "gbk", "windows-31j": "cp932"}
+
+	for delimiter in (';', ',', '('):
+		if delimiter in encoding:
+			encoding = encoding[:encoding.find(delimiter)].strip()
+
+	encoding = encoding.replace("&quot", "")
+
+	if "8858" in encoding:
+		encoding = encoding.replace("8858", "8859")
+	elif "8559" in encoding:
+		encoding = encoding.replace("8559", "8859")
+	elif "5889" in encoding:
+		encoding = encoding.replace("5889", "8859")
+	elif "5589" in encoding:
+		encoding = encoding.replace("5589", "8859")
+	elif "2313" in encoding:
+		encoding = encoding.replace("2313", "2312")
+	elif encoding.startswith("x-"):
+		encoding = encoding[len("x-"):]
+	elif "windows-cp" in encoding:
+		encoding = encoding.replace("windows-cp", "windows")
+
+	# name adjustment for compatibility
+	if encoding.startswith("8859"):
+		encoding = "iso-%s" % encoding
+	elif encoding.startswith("cp-"):
+		encoding = "cp%s" % encoding[3:]
+	elif encoding.startswith("euc-"):
+		encoding = "euc_%s" % encoding[4:]
+	elif encoding.startswith("windows") and not encoding.startswith("windows-"):
+		encoding = "windows-%s" % encoding[7:]
+	elif encoding.find("iso-88") > 0:
+		encoding = encoding[encoding.find("iso-88"):]
+	elif encoding.startswith("is0-"):
+		encoding = "iso%s" % encoding[4:]
+	elif encoding.find("ascii") > 0:
+		encoding = "ascii"
+	elif encoding.find("utf8") > 0:
+		encoding = "utf8"
+	elif encoding.find("utf-8") > 0:
+		encoding = "utf-8"
+
+	# Reference: http://philip.html5.org/data/charsets-2.html
+	if encoding in translate:
+		encoding = translate[encoding]
+	elif encoding in ("null", "{charset}", "*") or not re.search(r"\w", encoding):
+		return None
+
+	try:
+		codecs.lookup(encoding.encode(UNICODE_ENCODING) if isinstance(encoding, unicode) else encoding)
+	except (LookupError, ValueError):
+		encoding = None
+
+	if encoding:
+		try:
+			unicode(random_str(), encoding)
+		except:
+			encoding = None
+
+	return encoding
+
+
+def valid_content_type(headers):
+	"""
+	:param headers:
+	:return:
+	"""
+	content_type = None
+
+	if "Content-Type" in headers.keys():
+		content_type = headers['Content-Type']
+
+	if content_type is None:
+		return False
+	else:
+		# 拆分text/html; charset=utf-8
+		if ";" in content_type:
+			content_type = content_type.split(";")[0].strip()
+		else:
+			content_type = content_type.strip()
+
+		# 设置content-type检测白名单
+		if content_type in CONTENT_TYPE_WHITE_LIST:
+			return True
+		else:
+			return False
+
+
+def content_type_filter(req):
+	"""
+	对connection进行筛选
+	:param req:
+	:return:
+	"""
+	# http头部筛选
+	headers = req.headers
+
+	# 对检测的content-type进行筛选
+	if not valid_content_type(headers):
+		return False
+	return True
+
 
 if __name__ == '__main__':
-	conf.errors = "D:/codes/sqlidemo/xml/errors.xml"
-	is_error_contain(None)
+	pass

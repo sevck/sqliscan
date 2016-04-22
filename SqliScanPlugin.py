@@ -46,15 +46,11 @@ class SqliScanPlugin(GeneralPOCBase):
 		# setting for the place to scan
 		self.setting = {
 			"place": {
-				"cookie": 1,
+				"cookies": 1,
 				"params": 1,
 				"ua": 1,
 				"url_rewrite": 1,
-				"headers": {
-					"X-Forwarded-For": "1.1.1.1",
-					"Referer": "",
-					"Client-IP": ""
-				},
+				"headers": 1,
 			},
 		}
 
@@ -90,28 +86,36 @@ class SqliScanPlugin(GeneralPOCBase):
 		# 载入策略文件
 		load_payloads()
 
-	def audit(self, target, body=None, cookies=None):
+	def audit(self, target, body=None, cookies=None, headers=None):
+		"""
+		框架调用audit方法实现扫描
+		:string target: URL 可以携带参数
+		:string body:  POST数据包请求部分的body
+		:dict cookies:
+		:dict headers:
+		:return: None
+		"""
 		target = urllib.unquote(target)
-		if body:
+		if body is not None:
 			body = urllib.unquote(body)
 
-		if not check_connection(target, body=body):
-			return self.scan_result
-		if not kb.is_connect:
+		# 判断目标是否连接正常
+		if not check_connection(target, body=body, cookies=cookies, headers=headers):
 			return self.scan_result
 
 		# 载入place信息
-		feed_targets(target, self.setting, body=body)
+		feed_targets(target, self.setting, body=body, cookies=cookies, headers=headers)
 
 		# 检测页面是否是动态的 设置page_stable和dynamic_marks
-		check_stability(target, body=None, cookies=None)
+		check_stability(target, body=body)
 
 		# 进行扫描
 		for place in conf.parameters.keys():
 			# 普通参数型注入检测
 			if place == "params":
-				param_dict = conf.parameters[place]
-				for parameter, value in param_dict:
+				param_tuples = conf.parameters[place]
+				for parameter, value in param_tuples:
+					# if parameter != "ref": continue
 					check = check_dyn_param(place, parameter, value)
 					if not check:
 						print "parameter %s is [NOT] Dynamic" % parameter
@@ -122,15 +126,56 @@ class SqliScanPlugin(GeneralPOCBase):
 					if injection:
 						self.scan_result['pocInfo'] = self.poc_info
 						self.scan_result['url'] = target
-						self.scan_result['type'] = u"SQL Injection"
+						self.scan_result['type'] = "SQL Injection"
 						self.scan_result['method'] = kb.targets.method
 						self.scan_result['payload'] = conf.hint_payloads
+
+			# User-Agent注入
 			elif place == "ua":
-				pass
-			elif place == "cookie":
-				pass
+				parameter = "User-Agent"
+				value = conf.parameters['ua']
+				injection = check_sql_injection(place, parameter, value)
+				if injection:
+					self.scan_result['pocInfo'] = self.poc_info
+					self.scan_result['url'] = target
+					self.scan_result['type'] = "SQL Injection"
+					self.scan_result['method'] = kb.targets.method
+					self.scan_result['payload'] = conf.hint_payloads
+
+			# Cookies注入
+			elif place == "cookies":
+				if cookies is None:
+					continue
+				cookies_tuples = conf.parameters["cookies"]
+				print cookies_tuples
+				for parameter, value in cookies_tuples:
+					check = check_dyn_param(place, parameter, value)
+					if not check:
+						print "parameter %s is [NOT] Dynamic" % parameter
+						continue
+					else:
+						print "parameter %s is Dynamic" % parameter
+					injection = check_sql_injection(place, parameter, value)
+					if injection:
+						self.scan_result['pocInfo'] = self.poc_info
+						self.scan_result['url'] = target
+						self.scan_result['type'] = "SQL Injection"
+						self.scan_result['method'] = kb.targets.method
+						self.scan_result['payload'] = conf.hint_payloads
+
+			# header注入
 			elif place == "headers":
-				pass
+				if headers is None:
+					continue
+				headers_tuples = conf.parameters["headers"]
+				for parameter, value in headers_tuples:
+					injection = check_sql_injection(place, parameter, value)
+					if injection:
+						self.scan_result['pocInfo'] = self.poc_info
+						self.scan_result['url'] = target
+						self.scan_result['type'] = "SQL Injection"
+						self.scan_result['method'] = kb.targets.method
+						self.scan_result['payload'] = conf.hint_payloads
 			elif place == "url_rewrite":
 				pass
 			else:
@@ -142,14 +187,12 @@ class SqliScanPlugin(GeneralPOCBase):
 
 def main():
 	scanner = SqliScanPlugin()
-	# scanner.audit("http://music.baidu.com:80/story/edit/124810874?fr=ios")
-	# scanner.audit("http://vedio.baidu.com.cn:80/comic_intro/?e=1&service=json&dtype=comicplayurl&site=&callback=jquery1111003589733876287937_1435363200029&id=936&_=1435363200000")
+	scanner.audit("http://m.baidu.cn/from=0/bd_page_type=1/ssid=0/uid=0/pu=sz%40224_220/pu=sz%40224_220%2Cta%40middle____/baiduid=1D491E237DE09499175FDB1E8C28CE78/baiduid=1D491E237DE09499175FDB1E8C28CE78/w=0_10_%E6%9C%B4%E4%BF%A1%E6%83%A0/t=wap/l=0/tc?ref=www_colorful&lid=10257136221764703547&order=7&vit=osres&tj=www_normal_7_0_10_title&sec=3132&di=1db0127a10841d59&bdenc=1&nsrc=IlPT2AEptyoA_yixCFOxXnANedT62v3IE2iTNCVUB8SxokDyqRLvJMRtXT8EKXWCEUawdoT0sadMdGGcW7Qm7BR0u_-idTJrji_GsLqldhLqXM2Pv2wqJ2HDWiW")
+	# scanner.audit("http://www.rohde-schwarz.com.cn", headers={'X-Forwarded-For': '1.1.1.1'})
+	# scanner.audit("http://127.0.0.1/sqli/cookie.php", None, cookies={'id': '1', 'name': 'chongrui'})
+	# scanner.audit("http://127.0.0.1/sqli/header.php", None, headers={'X-Forwarded-For':'1'})
 	# scanner.audit("http://127.0.0.1/sqli/in.php?in=admin")
 	# scanner.audit("http://127.0.0.1/sqli/reflect.php?id=1")
-	scanner.audit("http://www.70jj.com/shop/index.php?shop_id=1")
-	# scanner.audit("http://wapbaike.baidu.com.cn:80/subview/757333/757333.htm?step=28&bd_page_type=1&net=0&page=10&st=1")
-	# scanner.audit("http://vedio.baidu.com.cn:80/comic_intro/?e=1&service=json&dtype=comicplayurl&site=&callback=jquery1111003589733876287937_1435363200029&id=936&_=1435363200000")
-
 	# scanner.audit("http://127.0.0.1/sqli/sqli.php?id=1")
 	# scanner.audit("http://127.0.0.1/sqli/orderby.php?order=1")
 	# scanner.audit("http://127.0.0.1/sqli/in.php?in=admin")

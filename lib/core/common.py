@@ -24,6 +24,7 @@ from lib.core.settings import PAYLOAD_DELIMITER
 from lib.core.settings import INVALID_UNICODE_CHAR_FORMAT
 from lib.core.settings import UNICODE_ENCODING
 from lib.core.settings import CONTENT_TYPE_WHITE_LIST
+from lib.core.settings import URL_REWRITE_REPLACE
 from lib.core.data import kb
 from lib.core.data import conf
 from lib.core.exception import SqliSystemException
@@ -358,7 +359,7 @@ def remove_payload_delimiters(value):
 
 	return value.replace(PAYLOAD_DELIMITER, '') if value else value
 
-def payload_packing(place, parameter, value="", newValue=None, where=None, delimiters=True):
+def payload_packing(place, parameter=None, value="", newValue=None, where=None, delimiters=True):
 	"""
 	组装payload
 	:param place: params ua headers url_rewrite
@@ -407,7 +408,9 @@ def payload_packing(place, parameter, value="", newValue=None, where=None, delim
 			ret_payload += "|"
 		return ret_payload[:-1]
 	elif place == "url_rewrite":
-		pass
+		target = kb.targets.target
+		ret_payload = target.replace(URL_REWRITE_REPLACE, newValue)
+		return ret_payload
 	elif place == "cookies":
 		for k, v in conf.parameters[place]:
 			if k == parameter:
@@ -423,8 +426,6 @@ def payload_packing(place, parameter, value="", newValue=None, where=None, delim
 				ret_payload += "%s=%s" % (k, v)
 			ret_payload += ";"
 		return ret_payload[:-1]
-	else:
-		pass
 
 
 def extract_regex_result(regex, content, flags=0):
@@ -589,7 +590,7 @@ def get_url_with_payload(payload, method, place):
 	elif place == "cookies":
 		ret_value = "COOKIES|Cookie: %s" % payload
 	elif place == "url_rewrite":
-		pass
+		ret_value = "REWRITE|%s" % payload
 	elif place == "headers":
 		ret_value = "HEADERS|%s" % payload
 	return ret_value

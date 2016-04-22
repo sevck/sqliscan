@@ -109,6 +109,7 @@ def feed_targets(target, setting, body=None, cookies=None, headers=None):
 		cookies_params = [(k, v) for k, v in cookies.items()]
 		conf.cookies_dict = cookies
 
+	headers_params = None
 	if headers is not None:
 		conf.headers_dict = headers
 		headers_params = [(k, v) for k, v in headers.items()]
@@ -131,7 +132,7 @@ def feed_targets(target, setting, body=None, cookies=None, headers=None):
 				if headers is not None and headers_params is not None:
 					conf.parameters["headers"] = headers_params
 			if k == "url_rewrite" and v == 1:
-				pass
+				conf.parameters["url_rewrite"] = kb.targets.target
 			if k == "cookies" and v == 1:
 				if cookies is not None and cookies_params is not None:
 					conf.parameters["cookies"] = cookies_params

@@ -31,6 +31,7 @@ from lib.core.request import Request
 from lib.core.settings import FORMAT_EXCEPTION_STRINGS
 from lib.core.settings import HEURISTIC_CHECK_ALPHABET
 from lib.core.settings import META_CHARSET_REGEX
+from lib.core.settings import URL_REWRITE_REPLACE
 
 
 def check_connection(target, body=None, cookies=None, headers=None):
@@ -42,6 +43,10 @@ def check_connection(target, body=None, cookies=None, headers=None):
 	"""
 	try:
 		try:
+			# URL重写的形式
+			if URL_REWRITE_REPLACE in target:
+				target = target.replace(URL_REWRITE_REPLACE, "")
+
 			parser = get_urlparse(target)
 			hostname = parser.netloc.split(":")[0]
 			socket.getaddrinfo(hostname, None)
@@ -111,6 +116,12 @@ def check_stability(target, body=None):
 	:return:
 	"""
 	print "check page stability"
+
+	# URL重写形式默认为stable
+	if URL_REWRITE_REPLACE not in target:
+		kb.page_stable = True
+		return kb.page_stable
+
 	first_page = None
 	second_page = None
 	# kb.original_page在check_connection方法中设置
@@ -148,10 +159,10 @@ def fuzzing_error_sqli(place, parameter, value):
 		rand_str = random_str(length=10, alphabet=HEURISTIC_CHECK_ALPHABET)
 
 	payload = "%s%s%s" % (prefix, rand_str, suffix)
+
+	# 正常URL检测
 	payload = payload_packing(place, parameter, value=value, newValue=payload, delimiters=False)
-
 	randstr_page, _ = Request.query_page(payload, place)
-
 	result = is_error_contain(randstr_page)
 
 	# 判断是否是类型转换的错误
@@ -166,7 +177,7 @@ def fuzzing_error_sqli(place, parameter, value):
 	return result, get_url_with_payload(payload, kb.targets.method, place)
 
 
-def check_sql_injection(place, parameter, value):
+def check_sql_injection(place, parameter=None, value=None):
 	"""
 	检测SQL注入的方法
 	:param place: 扫描的位置
@@ -197,7 +208,7 @@ def check_sql_injection(place, parameter, value):
 			comment = test.request.comment
 
 		fst_payload = cleanup_payload(test.request.payload, orig_value=value)
-		if value.isdigit():
+		if value and value.isdigit():
 			boundaries = sorted(copy.deepcopy(conf.boundaries), \
 								key=lambda x: any(_ in (x.prefix or "") \
 									or _ in (x.suffix or "") for _ in ('"', '\'')))
@@ -291,7 +302,8 @@ def check_sql_injection(place, parameter, value):
 
 						if true_result and not (true_page == false_page):
 							if not false_result:
-								infoMsg = "parameter '%s' is '%s' injectable " % (parameter, title)
+								infoMsg = "parameter '%s' is '%s' injectable " % \
+										  (parameter if parameter else "rewrite url", title)
 								print infoMsg
 								injectable = True
 								record_one = get_url_with_payload(req_payload,

@@ -16,6 +16,7 @@ from lib.core.init import set_default_headers
 from lib.core.init import feed_targets
 from lib.core.init import set_global_data
 from lib.core.init import set_path
+from lib.core.settings import URL_REWRITE_REPLACE
 from lib.parse.payload import load_boundaries
 from lib.parse.payload import load_payloads
 from lib.parse.payload import load_errors
@@ -43,7 +44,7 @@ class SqliScanPlugin(GeneralPOCBase):
 		"""
 		GeneralPOCBase.__init__(self)
 
-		# setting for the place to scan
+		# 设置需要扫描的位置
 		self.setting = {
 			"place": {
 				"cookies": 1,
@@ -54,6 +55,7 @@ class SqliScanPlugin(GeneralPOCBase):
 			},
 		}
 
+		# POC信息填写
 		self.poc_info = {
 			"author": "exploit_cat",
 			"name": "SQL注入检测",
@@ -67,6 +69,10 @@ class SqliScanPlugin(GeneralPOCBase):
 		self._init()
 
 	def _init(self):
+		"""
+		扫描任务初始化
+		:return:
+		"""
 		# 设置kb 和 conf全局对象
 		set_global_data()
 
@@ -85,6 +91,18 @@ class SqliScanPlugin(GeneralPOCBase):
 
 		# 载入策略文件
 		load_payloads()
+
+	def _set_result(self, target):
+		"""
+		设置扫描结果，扫描完成后调用
+		:param target:
+		:return:
+		"""
+		self.scan_result['pocInfo'] = self.poc_info
+		self.scan_result['url'] = target
+		self.scan_result['type'] = "SQL Injection"
+		self.scan_result['method'] = kb.targets.method
+		self.scan_result['payload'] = conf.hint_payloads
 
 	def audit(self, target, body=None, cookies=None, headers=None):
 		"""
@@ -111,6 +129,7 @@ class SqliScanPlugin(GeneralPOCBase):
 
 		# 进行扫描
 		for place in conf.parameters.keys():
+			injection = False
 			# 普通参数型注入检测
 			if place == "params":
 				param_tuples = conf.parameters[place]
@@ -123,24 +142,12 @@ class SqliScanPlugin(GeneralPOCBase):
 					else:
 						print "parameter %s is Dynamic" % parameter
 					injection = check_sql_injection(place, parameter, value)
-					if injection:
-						self.scan_result['pocInfo'] = self.poc_info
-						self.scan_result['url'] = target
-						self.scan_result['type'] = "SQL Injection"
-						self.scan_result['method'] = kb.targets.method
-						self.scan_result['payload'] = conf.hint_payloads
 
 			# User-Agent注入
 			elif place == "ua":
 				parameter = "User-Agent"
 				value = conf.parameters['ua']
 				injection = check_sql_injection(place, parameter, value)
-				if injection:
-					self.scan_result['pocInfo'] = self.poc_info
-					self.scan_result['url'] = target
-					self.scan_result['type'] = "SQL Injection"
-					self.scan_result['method'] = kb.targets.method
-					self.scan_result['payload'] = conf.hint_payloads
 
 			# Cookies注入
 			elif place == "cookies":
@@ -156,12 +163,6 @@ class SqliScanPlugin(GeneralPOCBase):
 					else:
 						print "parameter %s is Dynamic" % parameter
 					injection = check_sql_injection(place, parameter, value)
-					if injection:
-						self.scan_result['pocInfo'] = self.poc_info
-						self.scan_result['url'] = target
-						self.scan_result['type'] = "SQL Injection"
-						self.scan_result['method'] = kb.targets.method
-						self.scan_result['payload'] = conf.hint_payloads
 
 			# header注入
 			elif place == "headers":
@@ -170,16 +171,15 @@ class SqliScanPlugin(GeneralPOCBase):
 				headers_tuples = conf.parameters["headers"]
 				for parameter, value in headers_tuples:
 					injection = check_sql_injection(place, parameter, value)
-					if injection:
-						self.scan_result['pocInfo'] = self.poc_info
-						self.scan_result['url'] = target
-						self.scan_result['type'] = "SQL Injection"
-						self.scan_result['method'] = kb.targets.method
-						self.scan_result['payload'] = conf.hint_payloads
+
+			# 伪静态注入检测
 			elif place == "url_rewrite":
-				pass
-			else:
-				continue
+				if URL_REWRITE_REPLACE not in target:
+					continue
+				injection = check_sql_injection(place)
+
+			if injection:
+				self._set_result(target)
 
 	def attack(self, target):
 		pass
@@ -187,7 +187,7 @@ class SqliScanPlugin(GeneralPOCBase):
 
 def main():
 	scanner = SqliScanPlugin()
-	scanner.audit("http://m.baidu.cn/from=0/bd_page_type=1/ssid=0/uid=0/pu=sz%40224_220/pu=sz%40224_220%2Cta%40middle____/baiduid=1D491E237DE09499175FDB1E8C28CE78/baiduid=1D491E237DE09499175FDB1E8C28CE78/w=0_10_%E6%9C%B4%E4%BF%A1%E6%83%A0/t=wap/l=0/tc?ref=www_colorful&lid=10257136221764703547&order=7&vit=osres&tj=www_normal_7_0_10_title&sec=3132&di=1db0127a10841d59&bdenc=1&nsrc=IlPT2AEptyoA_yixCFOxXnANedT62v3IE2iTNCVUB8SxokDyqRLvJMRtXT8EKXWCEUawdoT0sadMdGGcW7Qm7BR0u_-idTJrji_GsLqldhLqXM2Pv2wqJ2HDWiW")
+	scanner.audit("http://static.app.m.v1.cn/www/mod/mob/ctl/subscription/act/my/uid/8473817[__payload__]/pcode/010110000/version/4.0.mindex.html")
 	# scanner.audit("http://www.rohde-schwarz.com.cn", headers={'X-Forwarded-For': '1.1.1.1'})
 	# scanner.audit("http://127.0.0.1/sqli/cookie.php", None, cookies={'id': '1', 'name': 'chongrui'})
 	# scanner.audit("http://127.0.0.1/sqli/header.php", None, headers={'X-Forwarded-For':'1'})

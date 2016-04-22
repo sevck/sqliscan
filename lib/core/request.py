@@ -74,7 +74,11 @@ class Request(object):
 				content = page_encoding(req.content, encoding="utf-8")
 				return content, req.headers
 		elif place == "url_rewrite":
-			pass
+			req = Request.http_send(req_payload)
+			if req:
+				# 进行编码操作
+				content = page_encoding(req.content, encoding=kb.page_encoding)
+				return content, req.headers
 		elif place == "cookies":
 			cookies = get_params_dict(req_payload, sep=';')
 			req = Request.http_send(kb.targets.target, cookies=cookies)

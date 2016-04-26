@@ -17,51 +17,7 @@ import time
 import signal
 
 from contextlib import contextmanager
-from threading import Thread
 from lib.core.exception import TimeoutException
-
-ThreadStop = Thread._Thread__stop
-
-
-def time_limited(timeout):
-	def decorator(function):
-		def decorator2(*args, **kwargs):
-			class TimeLimited(Thread):
-				def __init__(self, _error=None,):
-					Thread.__init__(self)
-					self._error =  _error
-
-				def run(self):
-					try:
-						self.result = function(*args, **kwargs)
-					except Exception, e:
-						self._error = e
-
-				def _stop(self):
-					if self.isAlive():
-						try:
-							self.terminate()
-						except Exception, e:
-							print "Thread stop error in _stop"
-
-			t = TimeLimited()
-			t.setDaemon(True)
-			t.start()
-			t.join(timeout)
-
-			if isinstance(t._error, TimeoutException):
-				t._stop()
-				raise TimeoutException('timeout for %s' % (repr(function)))
-
-			if t.isAlive():
-				t._stop()
-				raise TimeoutException('timeout for %s' % (repr(function)))
-
-			if t._error is None:
-				return t.result
-
-		return decorator2
-	return decorator
 
 
 @contextmanager

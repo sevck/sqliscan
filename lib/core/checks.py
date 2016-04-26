@@ -18,7 +18,7 @@ from lib.core.common import list_to_str
 from lib.core.common import random_str
 from lib.core.common import is_error_contain
 from lib.core.common import compare_pages
-from lib.core.common import remove_reflective_values
+from lib.core.common import compatible_remove_reflective_values
 from lib.core.common import random_int
 from lib.core.common import get_urlparse
 from lib.core.common import extract_payload
@@ -26,9 +26,7 @@ from lib.core.common import remove_payload_delimiters
 from lib.core.common import content_type_filter
 from lib.core.common import page_encoding
 from lib.core.common import check_char_encoding
-from lib.core.common import find_dynamic_content
-from lib.core.exception import TimeoutException
-from lib.core.timeout import time_limit
+from lib.core.common import compatible_find_dynamic_content
 from lib.core.request import Request
 from lib.core.settings import FORMAT_EXCEPTION_STRINGS
 from lib.core.settings import HEURISTIC_CHECK_ALPHABET
@@ -144,12 +142,8 @@ def check_stability(target, body=None):
 	kb.page_stable = (first_page == second_page)
 
 	if not kb.page_stable:
-		try:
-			with time_limit(kb.global_time_out):
-				kb.dynamic_marks = find_dynamic_content(first_page, second_page)
-		except TimeoutException, e:
-			print "[-]find dynamic content time out!"
-			kb.dynamic_marks = None
+		# 兼容性考虑
+		kb.dynamic_marks = compatible_find_dynamic_content(first_page, second_page)
 	return kb.page_stable
 
 
@@ -285,15 +279,7 @@ def check_sql_injection(place, parameter=None, value=None):
 
 						# 去除反射内容
 						reflect_payload = extract_payload(req_payload)
-						try:
-							with time_limit(kb.global_time_out):
-								true_page = remove_reflective_values(true_page, reflect_payload)
-						except TimeoutException, e:
-							print "[-]remove reflective values in true page time out!"
-							if kb.dynamic_marks is not None:
-								continue
-							else:
-								true_page = None
+						true_page = compatible_remove_reflective_values(true_page, reflect_payload)
 
 						if true_page is None:
 							continue
@@ -313,15 +299,7 @@ def check_sql_injection(place, parameter=None, value=None):
 						# 去除反射内容
 						reflect_payload2 = extract_payload(snd_payload_with_deli)
 
-						try:
-							with time_limit(kb.global_time_out):
-								false_page = remove_reflective_values(false_page, reflect_payload2)
-						except TimeoutException, e:
-							print "[-]remove reflective values in false page time out!"
-							if kb.dynamic_marks is not None:
-								continue
-							else:
-								false_page = None
+						false_page = compatible_remove_reflective_values(false_page, reflect_payload2)
 
 						if false_page is None:
 							continue

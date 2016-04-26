@@ -16,6 +16,8 @@ from lib.core.init import set_default_headers
 from lib.core.init import feed_targets
 from lib.core.init import set_global_data
 from lib.core.init import set_path
+from lib.core.init import set_default_encoding
+from lib.core.init import set_sock_timeout
 from lib.core.settings import URL_REWRITE_REPLACE
 from lib.parse.payload import load_boundaries
 from lib.parse.payload import load_payloads
@@ -66,18 +68,24 @@ class SqliScanPlugin(GeneralPOCBase):
 		}
 
 		# 初始化工作
-		self._init()
+		self.init()
 
-	def _init(self):
+	def init(self):
 		"""
 		扫描任务初始化
 		:return:
 		"""
+		# 设置socket超时时间
+		set_sock_timeout()
+
 		# 设置kb 和 conf全局对象
 		set_global_data()
 
 		# 设置conf.headers
 		set_default_headers()
+
+		# 设置内置编码
+		set_default_encoding()
 
 		# 设置项目相关的路径
 		paths.ROOT_PATH = _get_module_path()
@@ -186,7 +194,8 @@ class SqliScanPlugin(GeneralPOCBase):
 
 def main():
 	scanner = SqliScanPlugin()
-	scanner.audit("http://m5.baidu.com/from=124n/bd_page_type=1/ssid=0/uid=A7A9F69563FBBCDB479DC59826767B8F/pu=usm%400%2Csz%401320_1001%2Cta%40iphone_2_4.0_3_/baiduid=FE50F51B1B6A9ACD70E571E4BC9136ED/s?word=319319.com&ref=www_iphone&prest=111001&rn=10&pn=0&st=111041&tn=webmain&ftime=11700&sa=ts_1&sug_edit=0&rawqs=319319.&stime=1376733467387&mobile_se=0&dit=0")
+	scanner.audit("http://lw.nuomi.com:80/shenghuo-page3?=88888")
+	# scanner.audit("http://123.125.65.137:8089/tag/11373552?sort=hot_desc&start=41 AND 8272=8271&limit=20")
 	# scanner.audit("http://static.app.m.v1.cn/www/mod/mob/ctl/subscription/act/my/uid/8473817[__payload__]/pcode/010110000/version/4.0.mindex.html")
 	# scanner.audit("http://www.rohde-schwarz.com.cn", headers={'X-Forwarded-For': '1.1.1.1'})
 	# scanner.audit("http://127.0.0.1/sqli/cookie.php", None, cookies={'id': '1', 'name': 'chongrui'})

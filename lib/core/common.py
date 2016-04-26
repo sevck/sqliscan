@@ -30,7 +30,7 @@ from lib.core.data import kb
 from lib.core.data import conf
 from lib.core.exception import SqliSystemException
 from lib.core.exception import TimeoutException
-from lib.core.timeout import time_limited
+from lib.core.timeout import time_limit
 
 kb.global_time_out = GLOBAL_TIME_OUT
 
@@ -124,6 +124,28 @@ def find_dynamic_content(first_page, second_page):
 
 	if len(dynamic_markings) > 0:
 		return dynamic_markings
+
+
+def compatible_find_dynamic_content(first_page, second_page):
+	"""
+	引入兼容性的动态内容处理
+	:param first_page:
+	:param second_page:
+	:return:
+	"""
+	# Windows系统不支持信号量设置超时时间
+	if kb.support_signal is False:
+		dynamic_marks = find_dynamic_content(first_page, second_page)
+
+	# 类UNIX系统中使用信号量
+	else:
+		try:
+			with time_limit(kb.global_time_out):
+				dynamic_marks = find_dynamic_content(first_page, second_page)
+		except TimeoutException, e:
+			print "[-]find dynamic content time out!"
+			dynamic_marks = None
+	return dynamic_marks
 
 
 def remove_dynamic_content(page, dynamic_markings):
@@ -237,6 +259,7 @@ def get_unicode(value, encoding=None, noneToNull=False):
 		except UnicodeDecodeError:
 			return unicode(str(value), errors="ignore")
 
+
 def random_int(length=4, seed=None):
 	"""
 	>>> random.seed(0)
@@ -280,6 +303,7 @@ def list_to_str(value):
 	else:
 		retVal = value
 	return retVal
+
 
 def cleanup_payload(payload, orig_value=None):
 	"""
@@ -364,6 +388,7 @@ def remove_payload_delimiters(value):
 	"""
 
 	return value.replace(PAYLOAD_DELIMITER, '') if value else value
+
 
 def payload_packing(place, parameter=None, value="", newValue=None, where=None, delimiters=True):
 	"""
@@ -681,6 +706,28 @@ def remove_reflective_values(content, payload):
 	except MemoryError:
 		pass
 	return retVal
+
+
+def compatible_remove_reflective_values(content, payload):
+	"""
+	兼容性考虑，进行反射内容去除
+	:param content:
+	:param payload:
+	:return:
+	"""
+	page = None
+	# Windows系统不支持信号量
+	if kb.support_signal is False:
+		page = remove_reflective_values(content, payload)
+
+	# UNIX生产环境设置超时
+	else:
+		try:
+			with time_limit(kb.global_time_out):
+				page = remove_reflective_values(content, payload)
+		except TimeoutException:
+			print "[-]remove reflective values in true page time out!"
+	return page
 
 
 def extract_payload(value):

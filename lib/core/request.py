@@ -1,5 +1,6 @@
 # coding=utf-8
 import requests
+
 from lib.core.data import kb
 from lib.core.data import conf
 from lib.core.common import get_params_dict
@@ -12,6 +13,10 @@ class Request(object):
 	def http_send(url, params=None, cookies=None, data=None, other_header=None):
 		headers = None
 		timeout = 10
+
+		# 设置requests的重试次数
+		requests.adapters.DEFAULT_RETRIES = 5
+
 		if "headers" in conf.keys() and conf.headers:
 			headers = conf.headers
 		if "timeout" in conf.keys() and conf.timeout:
@@ -83,5 +88,5 @@ class Request(object):
 		return None, None
 
 if __name__ == '__main__':
-	req = Request.http_send("http://127.0.0.1/sqli/sqli.php?id=1")
+	req = Request.http_send("http://127.0.0.2/sqli/sqli.php?id=1")
 	print req.content

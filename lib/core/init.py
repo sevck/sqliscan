@@ -1,6 +1,8 @@
 # coding=utf-8
 import os
+import sys
 import socket
+import signal
 
 from lib.core.data import kb
 from lib.core.data import conf
@@ -15,6 +17,7 @@ from lib.core.common import is_multipart
 from lib.core.common import get_unicode
 from lib.core.settings import KB_CHARS_BOUNDARY_CHAR
 from lib.core.settings import GLOBAL_TIME_OUT
+from lib.core.settings import DEFAULT_ENCODING
 from lib.core.settings import KB_CHARS_LOW_FREQUENCY_ALPHABET
 
 
@@ -62,6 +65,12 @@ def set_global_data():
 	kb.page_encoding = "utf-8"
 	kb.global_time_out = GLOBAL_TIME_OUT
 
+	# 是否支持信号量操作， 为了兼容在windows上运行程序
+	if "SIGALRM" not in dir(signal):
+		kb.support_signal = False
+	else:
+		kb.support_signal = True
+
 	conf.parameters = AttribDict()
 	conf.params_dict = AttribDict()
 	conf.cookies_dict = AttribDict()
@@ -74,9 +83,6 @@ def set_global_data():
 	conf.hint_payloads = {"error": [], "bool": []}
 	conf.timeout = 5
 	conf.parser = None
-
-	# 设置socket超时时间
-	set_sock_timeout()
 
 
 def set_default_headers():
@@ -93,6 +99,11 @@ def set_default_headers():
 		conf.headers["Cache-control"] = "no-cache,no-store"
 		conf.headers["Pragma"] = "no-cache"
 		conf.headers["User-Agent"] = get_ua()
+
+
+def set_default_encoding():
+	reload(sys)
+	sys.setdefaultencoding(DEFAULT_ENCODING)
 
 
 def feed_targets(target, setting, body=None, cookies=None, headers=None):

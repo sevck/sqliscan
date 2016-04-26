@@ -25,14 +25,14 @@ class Request(object):
 				req = requests.get(url, params=params, cookies=cookies,
 								headers=headers, timeout=timeout,
 								data=data, verify=False,
-								allow_redirects=False)
+								allow_redirects=False, proxies=PROXIES)
 			else:
 				# post method
 				data = get_params_dict(data, sep="&")
 				req = requests.post(url, params=params, cookies=cookies,
 								headers=headers, timeout=timeout,
 								data=data, verify=False,
-								allow_redirects=False)
+								allow_redirects=False, proxies=PROXIES)
 
 			# 只对2xx的响应码进行判断
 			if 400 > req.status_code > 300 or req.status_code == 404:
@@ -44,24 +44,17 @@ class Request(object):
 
 	@staticmethod
 	def query_page(req_payload, place):
+		req = None
 		if place == "params":
 			# Get请求
 			if kb.targets.method == "GET":
 				target = kb.targets.target
 				url = "%s?%s" % (target, req_payload)
 				req = Request.http_send(url)
-				if req:
-					# 进行编码操作
-					content = page_encoding(req.content, encoding=kb.page_encoding)
-					return content, req.headers
-
 			# POST请求
 			elif kb.targets.method == "POST":
 				target = "%s?%s" % (kb.targets.target, conf.parser.query)
 				req = Request.http_send(target, data=req_payload)
-				if req:
-					content = page_encoding(req.content, encoding=kb.page_encoding)
-					return content, req.headers
 
 		# User-Agent注入
 		elif place == "ua":
@@ -70,30 +63,23 @@ class Request(object):
 				'User-Agent': req_payload
 			}
 			req = Request.http_send(target, other_header=ua)
-			if req:
-				content = page_encoding(req.content, encoding="utf-8")
-				return content, req.headers
+
 		elif place == "url_rewrite":
 			req = Request.http_send(req_payload)
-			if req:
-				# 进行编码操作
-				content = page_encoding(req.content, encoding=kb.page_encoding)
-				return content, req.headers
+
 		elif place == "cookies":
 			cookies = get_params_dict(req_payload, sep=';')
 			req = Request.http_send(kb.targets.target, cookies=cookies)
-			if req:
-				# 进行编码操作
-				content = page_encoding(req.content, encoding=kb.page_encoding)
-				return content, req.headers
+
 		elif place == "headers":
 			# 其他的常见headers
 			headers = get_params_dict(req_payload, sep='|')
 			req = Request.http_send(kb.targets.target, other_header=headers)
-			if req:
-				# 进行编码操作
-				content = page_encoding(req.content, encoding=kb.page_encoding)
-				return content, req.headers
+
+		if req is not None:
+			content = r'%s' % req.content
+			content = page_encoding(content, encoding=kb.page_encoding)
+			return content, req.headers
 		return None, None
 
 if __name__ == '__main__':

@@ -7,7 +7,6 @@ import socket
 
 from lib.core.data import conf
 from lib.core.data import kb
-from lib.core.common import findDynamicContent
 from lib.core.common import get_url_with_payload
 from lib.core.common import get_injection_tests
 from lib.core.common import cleanup_payload
@@ -19,7 +18,7 @@ from lib.core.common import list_to_str
 from lib.core.common import random_str
 from lib.core.common import is_error_contain
 from lib.core.common import compare_pages
-from lib.core.common import removeReflectiveValues
+from lib.core.common import remove_reflective_values
 from lib.core.common import random_int
 from lib.core.common import get_urlparse
 from lib.core.common import extract_payload
@@ -27,6 +26,9 @@ from lib.core.common import remove_payload_delimiters
 from lib.core.common import content_type_filter
 from lib.core.common import page_encoding
 from lib.core.common import check_char_encoding
+from lib.core.common import find_dynamic_content
+from lib.core.exception import TimeoutException
+from lib.core.timeout import time_limit
 from lib.core.request import Request
 from lib.core.settings import FORMAT_EXCEPTION_STRINGS
 from lib.core.settings import HEURISTIC_CHECK_ALPHABET
@@ -76,12 +78,14 @@ def check_connection(target, body=None, cookies=None, headers=None):
 			return False
 
 		# 对网页内容进行编码操作
-		content = page_encoding(req.content, encoding=kb.page_encoding)
+		content = r'%s' % req.content
+		content = page_encoding(content, encoding=kb.page_encoding)
 		kb.original_page = content
 		return True
 	except Exception, ex:
 		print ex
 		return False
+
 
 def check_dyn_param(place, parameter, value):
 	"""
@@ -118,7 +122,7 @@ def check_stability(target, body=None):
 	print "check page stability"
 
 	# URL重写形式默认为stable
-	if URL_REWRITE_REPLACE not in target:
+	if URL_REWRITE_REPLACE in target:
 		kb.page_stable = True
 		return kb.page_stable
 
@@ -134,12 +138,18 @@ def check_stability(target, body=None):
 								   cookies=conf.cookies_dict, other_header=conf.headers_dict)
 
 	if second_req is not None:
-		content = page_encoding(second_req.content, encoding=kb.page_encoding)
-		second_page = content
+		content = r'%s' % second_req.content
+		second_page = page_encoding(content, encoding=kb.page_encoding)
 
 	kb.page_stable = (first_page == second_page)
+
 	if not kb.page_stable:
-		kb.dynamic_marks = findDynamicContent(first_page, second_page)
+		try:
+			with time_limit(kb.global_time_out):
+				kb.dynamic_marks = find_dynamic_content(first_page, second_page)
+		except TimeoutException, e:
+			print "[-]find dynamic content time out!"
+			kb.dynamic_marks = None
 	return kb.page_stable
 
 
@@ -247,6 +257,7 @@ def check_sql_injection(place, parameter=None, value=None):
 					req_payload = payload_packing(place, parameter, value=value,
 												  newValue=bound_payload, where=where)
 					req_payload = cleanup_payload(req_payload, orig_value=value)
+					print req_payload
 				else:
 					req_payload = None
 
@@ -271,9 +282,21 @@ def check_sql_injection(place, parameter=None, value=None):
 					elif method == "comparison":
 						true_payload = remove_payload_delimiters(req_payload)
 						true_page, headers = Request.query_page(true_payload, place)
+
 						# 去除反射内容
 						reflect_payload = extract_payload(req_payload)
-						true_page = removeReflectiveValues(true_page, reflect_payload)
+						try:
+							with time_limit(kb.global_time_out):
+								true_page = remove_reflective_values(true_page, reflect_payload)
+						except TimeoutException, e:
+							print "[-]remove reflective values in true page time out!"
+							if kb.dynamic_marks is not None:
+								continue
+							else:
+								true_page = None
+
+						if true_page is None:
+							continue
 
 						# 组装第二次验证的payload
 						snd_boundpayload = cleanup_payload(test.response.comparison, orig_value=value)
@@ -289,13 +312,23 @@ def check_sql_injection(place, parameter=None, value=None):
 
 						# 去除反射内容
 						reflect_payload2 = extract_payload(snd_payload_with_deli)
-						false_page = removeReflectiveValues(false_page, reflect_payload2)
 
-						# 当超时链接发生时，页面就会返回None
-						if true_page is None or false_page is None:
+						try:
+							with time_limit(kb.global_time_out):
+								false_page = remove_reflective_values(false_page, reflect_payload2)
+						except TimeoutException, e:
+							print "[-]remove reflective values in false page time out!"
+							if kb.dynamic_marks is not None:
+								continue
+							else:
+								false_page = None
+
+						if false_page is None:
 							continue
 
 						# 判断是否盲注
+						if true_page is None or false_page is None:
+							continue
 						original_page = kb.original_page
 						true_result = compare_pages(original_page, true_page)
 						false_result = compare_pages(original_page, false_page)
@@ -305,7 +338,6 @@ def check_sql_injection(place, parameter=None, value=None):
 								infoMsg = "parameter '%s' is '%s' injectable " % \
 										  (parameter if parameter else "rewrite url", title)
 								print infoMsg
-								injectable = True
 								record_one = get_url_with_payload(req_payload,
 																   kb.targets.method, place)
 								record_second = get_url_with_payload(snd_payload,

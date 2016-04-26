@@ -18,3 +18,6 @@ class SqliSystemException(SqliBaseException):
 
 class SqliConnectException(SqliBaseException):
     pass
+
+class TimeoutException(Exception):
+    pass

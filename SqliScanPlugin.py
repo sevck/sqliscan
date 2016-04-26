@@ -49,7 +49,7 @@ class SqliScanPlugin(GeneralPOCBase):
 			"place": {
 				"cookies": 1,
 				"params": 1,
-				"ua": 1,
+				"ua": 0,
 				"url_rewrite": 1,
 				"headers": 1,
 			},
@@ -134,7 +134,6 @@ class SqliScanPlugin(GeneralPOCBase):
 			if place == "params":
 				param_tuples = conf.parameters[place]
 				for parameter, value in param_tuples:
-					# if parameter != "ref": continue
 					check = check_dyn_param(place, parameter, value)
 					if not check:
 						print "parameter %s is [NOT] Dynamic" % parameter
@@ -187,7 +186,8 @@ class SqliScanPlugin(GeneralPOCBase):
 
 def main():
 	scanner = SqliScanPlugin()
-	scanner.audit("http://static.app.m.v1.cn/www/mod/mob/ctl/subscription/act/my/uid/8473817[__payload__]/pcode/010110000/version/4.0.mindex.html")
+	scanner.audit("http://m5.baidu.com/from=124n/bd_page_type=1/ssid=0/uid=A7A9F69563FBBCDB479DC59826767B8F/pu=usm%400%2Csz%401320_1001%2Cta%40iphone_2_4.0_3_/baiduid=FE50F51B1B6A9ACD70E571E4BC9136ED/s?word=319319.com&ref=www_iphone&prest=111001&rn=10&pn=0&st=111041&tn=webmain&ftime=11700&sa=ts_1&sug_edit=0&rawqs=319319.&stime=1376733467387&mobile_se=0&dit=0")
+	# scanner.audit("http://static.app.m.v1.cn/www/mod/mob/ctl/subscription/act/my/uid/8473817[__payload__]/pcode/010110000/version/4.0.mindex.html")
 	# scanner.audit("http://www.rohde-schwarz.com.cn", headers={'X-Forwarded-For': '1.1.1.1'})
 	# scanner.audit("http://127.0.0.1/sqli/cookie.php", None, cookies={'id': '1', 'name': 'chongrui'})
 	# scanner.audit("http://127.0.0.1/sqli/header.php", None, headers={'X-Forwarded-For':'1'})

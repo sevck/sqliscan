@@ -14,6 +14,7 @@ from lib.core.common import random_str
 from lib.core.common import is_multipart
 from lib.core.common import get_unicode
 from lib.core.settings import KB_CHARS_BOUNDARY_CHAR
+from lib.core.settings import GLOBAL_TIME_OUT
 from lib.core.settings import KB_CHARS_LOW_FREQUENCY_ALPHABET
 
 
@@ -59,6 +60,7 @@ def set_global_data():
 	kb.match_ratio = None
 	kb.targets = AttribDict()
 	kb.page_encoding = "utf-8"
+	kb.global_time_out = GLOBAL_TIME_OUT
 
 	conf.parameters = AttribDict()
 	conf.params_dict = AttribDict()
@@ -73,6 +75,7 @@ def set_global_data():
 	conf.timeout = 5
 	conf.parser = None
 
+	# 设置socket超时时间
 	set_sock_timeout()
 
 

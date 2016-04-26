@@ -25,9 +25,14 @@ from lib.core.settings import INVALID_UNICODE_CHAR_FORMAT
 from lib.core.settings import UNICODE_ENCODING
 from lib.core.settings import CONTENT_TYPE_WHITE_LIST
 from lib.core.settings import URL_REWRITE_REPLACE
+from lib.core.settings import GLOBAL_TIME_OUT
 from lib.core.data import kb
 from lib.core.data import conf
 from lib.core.exception import SqliSystemException
+from lib.core.exception import TimeoutException
+from lib.core.timeout import time_limited
+
+kb.global_time_out = GLOBAL_TIME_OUT
 
 
 def get_ua():
@@ -72,24 +77,24 @@ def trimAlphaNum(value):
 	"""
 	工具方法，去掉字符串开头和结尾的字母数字
 	"""
-	while value and value[-1].isalnum():
+	while value and get_unicode(value[-1]).isalnum():
 		value = value[:-1]
-	while value and value[0].isalnum():
+	while value and get_unicode(value[0]).isalnum():
 		value = value[1:]
 
 	return value
 
 
-def findDynamicContent(firstPage, secondPage):
+def find_dynamic_content(first_page, second_page):
 	"""
 	寻找页面中的动态内容
 	"""
 	DYNAMICITY_MARK_LENGTH = 32
-	if not firstPage or not secondPage:
+	if not first_page or not second_page:
 		return
-	seq_matcher = difflib.SequenceMatcher(None, firstPage, secondPage)
+	seq_matcher = difflib.SequenceMatcher(None, first_page, second_page)
 	blocks = seq_matcher.get_matching_blocks()
-	dynamicMarkings = []
+	dynamic_markings = []
 
 	# Removing too small matching blocks
 	for block in blocks[:]:
@@ -103,29 +108,30 @@ def findDynamicContent(firstPage, secondPage):
 		blocks.append(None)
 
 		for i in xrange(len(blocks) - 1):
-			prefix = firstPage[blocks[i][0]:blocks[i][0] + blocks[i][2]] if blocks[i] else None
-			suffix = firstPage[blocks[i + 1][0]:blocks[i + 1][0] + blocks[i + 1][2]] if blocks[i + 1] else None
+			prefix = first_page[blocks[i][0]:blocks[i][0] + blocks[i][2]] if blocks[i] else None
+			suffix = first_page[blocks[i + 1][0]:blocks[i + 1][0] + blocks[i + 1][2]] if blocks[i + 1] else None
 
 			if prefix is None and blocks[i + 1][0] == 0:
 				continue
 
-			if suffix is None and (blocks[i][0] + blocks[i][2] >= len(firstPage)):
+			if suffix is None and (blocks[i][0] + blocks[i][2] >= len(first_page)):
 				continue
 
 			prefix = trimAlphaNum(prefix)
 			suffix = trimAlphaNum(suffix)
 
-			dynamicMarkings.append((prefix[-DYNAMICITY_MARK_LENGTH / 2:] if prefix else None, suffix[:DYNAMICITY_MARK_LENGTH / 2] if suffix else None))
+			dynamic_markings.append((prefix[-DYNAMICITY_MARK_LENGTH / 2:] if prefix else None, suffix[:DYNAMICITY_MARK_LENGTH / 2] if suffix else None))
 
-	if len(dynamicMarkings) > 0:
-		return dynamicMarkings
+	if len(dynamic_markings) > 0:
+		return dynamic_markings
 
-def removeDynamicContent(page, dynamicMarkings):
+
+def remove_dynamic_content(page, dynamic_markings):
 	"""
 	去掉页面中的动态内容
 	"""
-	if page and dynamicMarkings:
-		for item in dynamicMarkings:
+	if page and dynamic_markings:
+		for item in dynamic_markings:
 			prefix, suffix = item
 
 			if prefix is None and suffix is None:
@@ -374,6 +380,8 @@ def payload_packing(place, parameter=None, value="", newValue=None, where=None, 
 	# 参数位置的注入检测
 	if place == "params":
 		for k, v in conf.parameters[place]:
+			k = get_unicode(k)
+			v = get_unicode(v)
 			if k == parameter:
 				# 考虑payload和参数的结合方式（where值）
 				if where == 1 or where == 2 or not where:
@@ -469,7 +477,7 @@ def is_multipart(body):
 
 def htmlunescape(value):
 	"""
-	Returns (basic conversion) HTML unescaped value
+	HTML解码函数
 
 	>>> htmlunescape('a&lt;b')
 	'a<b'
@@ -487,8 +495,7 @@ def htmlunescape(value):
 
 def getFilteredPageContent(page, onlyText=True):
 	"""
-	Returns filtered page content without script, style and/or comments
-	or all HTML tags
+	去除script, style, comments标签
 
 	>>> getFilteredPageContent(u'<html><title>foobar</title><body>test</body></html>')
 	u'foobar test'
@@ -514,8 +521,11 @@ def compare_pages(first_page, secd_page):
 	:return:
 	"""
 	if not kb.page_stable:
-		first_page = removeDynamicContent(first_page, kb.dynamic_marks)
-		secd_page = removeDynamicContent(secd_page, kb.dynamic_marks)
+		try:
+			first_page = remove_dynamic_content(first_page, kb.dynamic_marks)
+			secd_page = remove_dynamic_content(secd_page, kb.dynamic_marks)
+		except TimeoutException, e:
+			return None
 
 	matcher = difflib.SequenceMatcher()
 	matcher.set_seq1(first_page)
@@ -620,10 +630,14 @@ def urldecode(value):
 	return urllib.unquote(value)
 
 
-def removeReflectiveValues(content, payload, suppressWarning=False):
+def remove_reflective_values(content, payload):
 	"""
-	Neutralizes reflective values in a given content based on a payload
-	(e.g. ..search.php?q=1 AND 1=2 --> "...searching for <b>1%20AND%201%3D2</b>..." --> "...searching for <b>__REFLECTED_VALUE__</b>...")
+	去除网页内容中的反射内容
+	(e.g.
+		..search.php?q=1 AND 1=2 -->
+		"...searching for <b>1%20AND%201%3D2</b>..." --> "
+		...searching for <b>__REFLECTED_VALUE__</b>..."
+	)
 	"""
 
 	retVal = content
@@ -635,14 +649,16 @@ def removeReflectiveValues(content, payload, suppressWarning=False):
 					value = value.replace(2 * REFLECTED_REPLACEMENT_REGEX, REFLECTED_REPLACEMENT_REGEX)
 				return value
 
-			regex = _(filterStringValue(payload, r"[A-Za-z0-9]", REFLECTED_REPLACEMENT_REGEX.encode("string-escape")))
+			regex = _(filterStringValue(payload, r"[A-Za-z0-9]",
+										REFLECTED_REPLACEMENT_REGEX.encode("string-escape")))
 
 			if regex != payload:
-				if all(part.lower() in content.lower() for part in filter(None, regex.split(REFLECTED_REPLACEMENT_REGEX))[1:]):  # fast optimization check
+				if all(part.lower() in content.lower()
+					   for part in filter(None, regex.split(REFLECTED_REPLACEMENT_REGEX))[1:]):
 					parts = regex.split(REFLECTED_REPLACEMENT_REGEX)
-					retVal = content.replace(payload, REFLECTED_VALUE_MARKER)  # dummy approach
+					retVal = content.replace(payload, REFLECTED_VALUE_MARKER)
 
-					if len(parts) > REFLECTED_MAX_REGEX_PARTS:  # preventing CPU hogs
+					if len(parts) > REFLECTED_MAX_REGEX_PARTS:
 						regex = _("%s%s%s" % (REFLECTED_REPLACEMENT_REGEX.join(parts[:REFLECTED_MAX_REGEX_PARTS / 2]), REFLECTED_REPLACEMENT_REGEX, REFLECTED_REPLACEMENT_REGEX.join(parts[-REFLECTED_MAX_REGEX_PARTS / 2:])))
 
 					parts = filter(None, regex.split(REFLECTED_REPLACEMENT_REGEX))
@@ -662,13 +678,8 @@ def removeReflectiveValues(content, payload, suppressWarning=False):
 					if len(parts) > 2:
 						regex = REFLECTED_REPLACEMENT_REGEX.join(parts[1:])
 						retVal = re.sub(r"(?i)\b%s\b" % regex, REFLECTED_VALUE_MARKER, retVal)
-
 	except MemoryError:
-		kb.reflectiveMechanism = False
-		if not suppressWarning:
-			debugMsg = "turning off reflection removal mechanism (because of low memory issues)"
-			print debugMsg
-
+		pass
 	return retVal
 
 
@@ -688,11 +699,10 @@ def page_encoding(content, encoding="utf-8"):
 	:return:
 	"""
 	content = get_unicode(content, encoding=encoding)
-	content = content.encode(encoding).decode("unicode_escape")
 	return content
 
 
-def check_char_encoding(encoding, warn=True):
+def check_char_encoding(encoding):
 	"""
 	识别编码的名称
 	>>> checkCharEncoding('iso-8858', False)
@@ -706,7 +716,12 @@ def check_char_encoding(encoding, warn=True):
 	else:
 		return encoding
 
-	translate = {"windows-874": "iso-8859-11", "utf-8859-1": "utf8", "en_us": "utf8", "macintosh": "iso-8859-1", "euc_tw": "big5_tw", "th": "tis-620", "unicode": "utf8",  "utc8": "utf8", "ebcdic": "ebcdic-cp-be", "iso-8859": "iso8859-1", "ansi": "ascii", "gbk2312": "gbk", "windows-31j": "cp932"}
+	translate = {"windows-874": "iso-8859-11", "utf-8859-1": "utf8",
+				 "en_us": "utf8", "macintosh": "iso-8859-1",
+				 "euc_tw": "big5_tw", "th": "tis-620",
+				 "unicode": "utf8",  "utc8": "utf8",
+				 "ebcdic": "ebcdic-cp-be", "iso-8859": "iso8859-1",
+				 "ansi": "ascii", "gbk2312": "gbk", "windows-31j": "cp932"}
 
 	for delimiter in (';', ',', '('):
 		if delimiter in encoding:

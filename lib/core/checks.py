@@ -251,7 +251,6 @@ def check_sql_injection(place, parameter=None, value=None):
 					req_payload = payload_packing(place, parameter, value=value,
 												  newValue=bound_payload, where=where)
 					req_payload = cleanup_payload(req_payload, orig_value=value)
-					print req_payload
 				else:
 					req_payload = None
 
@@ -279,9 +278,13 @@ def check_sql_injection(place, parameter=None, value=None):
 
 						# 去除反射内容
 						reflect_payload = extract_payload(req_payload)
-						true_page = compatible_remove_reflective_values(true_page, reflect_payload)
+						true_page, is_timeout = compatible_remove_reflective_values(true_page, reflect_payload)
 
 						if true_page is None:
+							continue
+
+						# 如果页面是动态的，但是获取动态内容的时候发生了超时，直接忽略
+						if kb.page_stable is False and is_timeout:
 							continue
 
 						# 组装第二次验证的payload
@@ -296,12 +299,15 @@ def check_sql_injection(place, parameter=None, value=None):
 						snd_payload = remove_payload_delimiters(snd_payload)
 						false_page, headers = Request.query_page(snd_payload, place)
 
-						# 去除反射内容
+						# 兼容性去除反射内容
 						reflect_payload2 = extract_payload(snd_payload_with_deli)
-
-						false_page = compatible_remove_reflective_values(false_page, reflect_payload2)
-
+						false_page, is_timeout = compatible_remove_reflective_values(false_page, reflect_payload2)
+						
 						if false_page is None:
+							continue
+
+						# 如果页面是动态的，但是获取动态内容的时候发生了超时，直接忽略
+						if kb.page_stable is False and is_timeout:
 							continue
 
 						# 判断是否盲注

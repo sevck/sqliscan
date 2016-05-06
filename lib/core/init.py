@@ -19,6 +19,8 @@ from lib.core.settings import KB_CHARS_BOUNDARY_CHAR
 from lib.core.settings import GLOBAL_TIME_OUT
 from lib.core.settings import DEFAULT_ENCODING
 from lib.core.settings import KB_CHARS_LOW_FREQUENCY_ALPHABET
+from lib.core.settings import NETWORK_TIME_OUT
+from lib.core.settings import URL_REWRITE_REPLACE
 
 
 def set_sock_timeout():
@@ -81,8 +83,11 @@ def set_global_data():
 	conf.errors = []
 	conf.tests = []
 	conf.hint_payloads = {"error": [], "bool": []}
-	conf.timeout = 5
+	conf.timeout = NETWORK_TIME_OUT
 	conf.parser = None
+
+	# 设置socket超时时间
+	set_sock_timeout()
 
 
 def set_default_headers():
@@ -146,7 +151,8 @@ def feed_targets(target, setting, body=None, cookies=None, headers=None):
 				if headers is not None and headers_params is not None:
 					conf.parameters["headers"] = headers_params
 			if k == "url_rewrite" and v == 1:
-				conf.parameters["url_rewrite"] = kb.targets.target
+				if URL_REWRITE_REPLACE in target:
+					conf.parameters["url_rewrite"] = kb.targets.target
 			if k == "cookies" and v == 1:
 				if cookies is not None and cookies_params is not None:
 					conf.parameters["cookies"] = cookies_params

@@ -17,7 +17,6 @@ from lib.core.init import feed_targets
 from lib.core.init import set_global_data
 from lib.core.init import set_path
 from lib.core.init import set_default_encoding
-from lib.core.init import set_sock_timeout
 from lib.core.settings import URL_REWRITE_REPLACE
 from lib.parse.payload import load_boundaries
 from lib.parse.payload import load_payloads
@@ -46,12 +45,12 @@ class SqliScanPlugin(GeneralPOCBase):
 		"""
 		GeneralPOCBase.__init__(self)
 
-		# 设置需要扫描的位置
+		# 设置需要扫描的位置 0:关闭 1:开启
 		self.setting = {
 			"place": {
 				"cookies": 1,
 				"params": 1,
-				"ua": 0,
+				"ua": 1,
 				"url_rewrite": 1,
 				"headers": 1,
 			},
@@ -75,9 +74,6 @@ class SqliScanPlugin(GeneralPOCBase):
 		扫描任务初始化
 		:return:
 		"""
-		# 设置socket超时时间
-		set_sock_timeout()
-
 		# 设置kb 和 conf全局对象
 		set_global_data()
 
@@ -103,8 +99,14 @@ class SqliScanPlugin(GeneralPOCBase):
 	def _set_result(self, target):
 		"""
 		设置扫描结果，扫描完成后调用
-		:param target:
-		:return:
+		self.scan_result['payload']保存命中的扫描规则，是一个dict结构，
+		有error和bool两个key，分别表示报错注入规则和盲注规则，其中每个key对应的
+		value都是一个list。list的元素存放的是字符串，该字符串代表一个命中规则，举例：
+		GET类型的报错注入: GET|http://127.0.0.1/sql.php?id=1'
+		POST类型的盲注: POST|http://127.0.0.1/sql.php|id=1 and 1=1
+		Payload的详细输出请看comment.py中的get_url_with_payload函数
+		:param target: 扫描目标URL
+		:return: None
 		"""
 		self.scan_result['pocInfo'] = self.poc_info
 		self.scan_result['url'] = target
@@ -183,10 +185,14 @@ class SqliScanPlugin(GeneralPOCBase):
 			elif place == "url_rewrite":
 				if URL_REWRITE_REPLACE not in target:
 					continue
-				injection = check_sql_injection(place)
+				else:
+					injection = check_sql_injection(place)
 
 			if injection:
 				self._set_result(target)
+
+		# 返回扫描结果
+		return self.scan_result
 
 	def attack(self, target):
 		pass
@@ -194,7 +200,7 @@ class SqliScanPlugin(GeneralPOCBase):
 
 def main():
 	scanner = SqliScanPlugin()
-	scanner.audit("http://lw.nuomi.com:80/shenghuo-page3?=88888")
+	scanner.audit("http://api.baiyue.baidu.com/sn/api/instantfulltext?url=http://www.zmdnews.cn/paper2/news.php?id=238262&pid=2107&title=%e5%ba%9e%e9%98%81%e6%9d%91%e6%9c%89%e8%ae%b8%e5%a4%9a%e8%8b%b1%e9%9b%84%e7%9a%84%e6%95%85%e4%ba%8b&site=%e9%a9%bb%e9%a9%ac%e5%ba%97%e6%96%b0%e9%97%bb%e7%bd%91")
 	# scanner.audit("http://123.125.65.137:8089/tag/11373552?sort=hot_desc&start=41 AND 8272=8271&limit=20")
 	# scanner.audit("http://static.app.m.v1.cn/www/mod/mob/ctl/subscription/act/my/uid/8473817[__payload__]/pcode/010110000/version/4.0.mindex.html")
 	# scanner.audit("http://www.rohde-schwarz.com.cn", headers={'X-Forwarded-For': '1.1.1.1'})

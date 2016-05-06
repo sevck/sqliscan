@@ -715,7 +715,8 @@ def compatible_remove_reflective_values(content, payload):
 	:param payload:
 	:return:
 	"""
-	page = None
+	page = content
+	is_timeout = False
 	# Windows系统不支持信号量
 	if kb.support_signal is False:
 		page = remove_reflective_values(content, payload)
@@ -726,8 +727,9 @@ def compatible_remove_reflective_values(content, payload):
 			with time_limit(kb.global_time_out):
 				page = remove_reflective_values(content, payload)
 		except TimeoutException:
+			is_timeout = True
 			print "[-]remove reflective values in true page time out!"
-	return page
+	return page, is_timeout
 
 
 def extract_payload(value):
